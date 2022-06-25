@@ -1,0 +1,317 @@
+---
+title: "MicroArray Analysis in R"
+author: "Beatriz Manso"
+date: '2022-04-21'
+output: 
+  distill::distill_article:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+    code_folding: false
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Researchers used microarrays to study gene expression of cells in the '00s in a transcriptome-wide manner. While RNA-seq has become the preferred method for genome-wide transcriptomics due to decreasing sequencing costs, microarrays are still used for their relative simplicity of analysis. Furthermore, there are a large number of existing microarray data sets that are still relevant for analysis. 
+The purpose of this tutorial is to introduce the techniques of analyzing gene expression microarray data.
+
+
+
+# Methods
+
+Set working directory:
+
+```{r}
+setwd("C:/Users/manso/OneDrive - University of West London/MSc Bioinformatics - UWL/6.BGA - Bioinformatics and Genome Analysis/week 5 - Microarray analysis/practical")
+```
+
+
+Install necessary packages and load libraries:
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+ install.packages("BiocManager")
+BiocManager::install("affy")
+
+library(affy)
+library(ggplot2)
+
+```
+
+# 1. Data Exploration
+
+## Get the .CEL files:
+
+```{r}
+celpath = "C:/Users/manso/OneDrive - University of West London/MSc Bioinformatics - UWL/6.BGA - Bioinformatics and Genome Analysis/week 5 - Microarray analysis/practical/Microarray data"
+data = ReadAffy(celfile.path = celpath)
+data # data is the name of your AffyBatch object
+
+```
+CEL files contain raw intensities for each probe on the array. 
+The data is now an AffyBatch object containing the data from your CEL files.
+
+To view specific items of a simple object: refer to their location using [ ] 
+e.g.
+- Object[1,2] will retrieve the item on the first row and second column
+- Object[1:2,] will retrieve all columns of the first two rows
+
+To view an entire column of a data frame: use $ e.g. dataframe$columnname
+To access slots of complex objects: use object@ followed by the name of the slot.
+
+
+## exprs() and intensity() methods extract the intensities of all probes both PM and MM probes) from the AffyBatch
+
+```{r}
+expr = exprs(data)
+int = intensity(data)
+expr[1:5,] #limit the view to the first 5 probes
+
+```
+
+
+## Look at the intensities of the PM probes using the pm() method
+
+```{r}
+pm(data)[1:5,]
+```
+
+## Retrieve sample annotation using affy
+
+Microarray data sets have information about the samples that were 
+hybridized to the arrays, e.g. sample labels. To retrieve phenodata use:
+
+```{r}
+ph = data@phenoData
+ph
+
+```
+### Select a column the dataframe using the $ sign. 
+Find the names of the columns in varLabels: there is one column named sample:
+
+```{r}
+ph$sample
+```
+### To look at all the data in the data frame ask for the data slot.
+
+```{r}
+ph@data
+```
+
+### pData() method is anonther way to look at the sample annotation:
+
+```{r}
+pData(data)
+
+```
+
+## Retrieve probe annotation using affy
+Microarray data sets include information on the probes. AffyBatches have a slot called featureData, a data frame that contains labels for the probes.
+
+```{r}
+feat = data@featureData
+feat
+
+```
+
+## Retrieve experiment annotation using affy
+Microarray data sets include information on the experiment. AffyBatches have a slot for this called experimentData.
+
+```{r}
+exp = data@experimentData
+exp
+
+```
+
+# 2. Quality control of microarray data
+
+### Define that the first column of the data slot in the phenoData corresponds to the vector containing the sample names created by the c() command:
+
+```{r}
+ph@data[ ,1] = c("wt1","wt2","wt3","mut1","mut2","mut3")
+ph
+```
+In this dataset we have 2 groups of 3 replicates: 3 WT controls and 3 mutants
+
+If we had 3 groups of 3 replicates:
+
+```{r eval=FALSE}
+ph@data[ ,1] = c("control1","control2","control3","iso1","iso2","iso3","swim1","swim2","swim3")
+ph@data
+
+```
+
+# 3. Create plots to assess the quality of the data
+Microarray pictures can show large inconsistencies on individual arrays. 
+If you have a set of small arrays, e.g., 6 arrays and you want to plot them on a single plot, you can use the following code for the plotting:
+
+```{r}
+for (i in 1:6)
+{
+ name = paste("image",i,".jpg",sep="")
+ jpeg(name)
+ image(data[,i],main=ph@data$sample[i])
+ dev.off()
+}
+```
+
+```{r}
+op = par(mfrow = c(2,3))
+for (i in 1:6){image(data[,i],main=ph@data$sample[i])}
+```
+- par(mfrow = c(2,3)) defines that you want to plot the 6 figures in a grid of 2 rows and 3 columns
+
+If we have 3 groups of 3 replicates and want to plot them on a single plot:
+
+```{r eval=FALSE}
+op = par(mfrow = c(3,3))
+for (i in 1:9){image(data[,i],main=ph@data$sample[i])}
+
+```
+
+## Histograms and Boxplots
+
+Histograms are plotted as a quality control check to determine if normalisation is required. We will plot the distribution of log base 2 intensities (log2(PMij) for array i and probe j) of perfect match probes for comparison of probe intensity behaviour between different arrays. 
+If we see differences in shape or centre of the distributions, it means that normalization is required.
+
+```{r}
+op = par(mfrow = c(2,3))
+for(i in 1:6){hist(data[,i],lwd=2,which='pm',ylab='Density',xlab='Log2 
+intensities',main=ph@data$sample[i])}
+
+```
+- Create one histogram plot containing the histograms of all samples:
+
+```{r}
+colour=c('green','green','green','red','red','red')
+hist(data[,1:6],lwd=2,which='pm',col=colour,ylab='Density',xlab='Log2 
+intensities',main='Histogram of raw data')
+
+```
+Boxplots and histograms show the same differences in probe intensity 
+behavior between arrays. In order to perform meaningful statistical analysis 
+and inferences from the data, you need to ensure that all the samples are 
+comparable. To examine and compare the overall distribution of log transformed 
+PM intensities between the samples you can use a histogram but you will get a 
+clearer view with a box plot.
+
+### boxplot() method:
+
+```{r}
+name = "boxplot.jpg"
+jpeg(name)
+boxplot( data, which='pm', col='red', names=ph@data$sample)
+#dev.off()
+
+```
+
+The which argument allows you to specify if you want to use:
+• perfect match probes only: which='pm'
+• mismatch probes only: which='mm'
+• both: which='both'
+Since the use of MM probes is highly controversial, we will work with PM probes only.
+The col argument specifies the color of the boxes, the names argument the labels on the X-axis.
+
+### Create box plot of the raw data using ggplot
+
+### Using the PM intensities:
+
+```{r}
+pmexp = pm(data)
+```
+Create two empty vectors that will serve as the two columns of the data 
+frame:
+- one to store the sample names in, called sampleNames
+- one to store the log intensities in , called logs
+
+```{r}
+sampleNames = vector()
+logs = vector()
+
+for (i in 1:6)
+{
+sampleNames = c(sampleNames,rep(ph@data[i,1],dim(pmexp)[1]))
+logs = c(logs,log2(pmexp[,i]))
+}
+```
+
+If there's 3 groups of 3 replicates, the code is as follows:
+
+```{r eval=FALSE}
+sampleNames = vector()
+logs = vector()
+15
+for (i in 1:9)
+{
+sampleNames = c(sampleNames,rep(ph@data[i,1],dim(pmexp)[1]))
+logs = c(logs,log2(pmexp[,i]))
+```
+
+After we have filled the vectors with the data we need, we combine sample names and log intensities into a single data frame:
+
+```{r}
+logData = data.frame(logInt=logs,sampleName=sampleNames)
+
+#Now we create the plot
+dataBox = ggplot(logData,aes(sampleName,logInt))
+dataBox + geom_boxplot()
+
+```
+
+### Create a boxplot of normalized intensities
+Use same code as for raw intensities but use the normalized intensities as input (data.matrix) instead of the raw data:
+
+```{r eval=FALSE}
+name = "boxplotnorm.jpg"
+jpeg(name)
+boxplot(data.matrix,col='red',names=ph@data$sample)
+dev.off()
+
+```
+
+### Create a box plot of normalized intensities using ggplot
+
+```{reval=FALSE}
+sampleNames = vector()
+normlogs = vector()
+
+for (i in 1:6)
+{
+sampleNames = c(sampleNames,rep(ph@data[i,1],dim(data.matrix)[1]))
+normlogs = c(normlogs,data.matrix[,i])
+}
+```
+If you have 3 groups of 3 samples, the code is as follows:
+
+```{r eval=FALSE}
+sampleNames = vector()
+normlogs = vector()
+for (i in 1:9)
+{
+sampleNames = c(sampleNames,rep(ph@data[i,1],dim(data.matrix)[1]))
+normlogs = c(normlogs,data.matrix[,i])
+}
+```
+
+After filling the vectors with data, we combine sample names and normalized intensities into a single data frame:
+
+```{r eval=FALSE}
+normData = data.frame(norm_logInt=normlogs,sampleName=sampleNames)
+
+
+dataBox = ggplot(normData, aes(sampleName,norm_logInt))
+dataBox + geom_boxplot() + ylim(2,16) + ggtitle("after normalization")
+
+```
+```{r}
+dataBox = ggplot(logData,aes(sampleName,logInt))
+dataBox + geom_boxplot() + ylim(2,16) + ggtitle("before normalization")
+```
